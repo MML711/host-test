@@ -1,0 +1,1 @@
+WRITE the Amharic version of the code text on this first line, with {code} where the 6-digit code goes. Keep it within 70 characters so it fits one SMS.

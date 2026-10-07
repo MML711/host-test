@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Host test</title>
+  <style>
+    :root { --bg: #f6f7f5; --card: #fff; --text: #1d2420; --muted: #5f6b64; --ok: #1d7a46; --bad: #b42318; --line: #dfe4e0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #121614; --card: #1b201d; --text: #e7ece9; --muted: #9aa6a0; --ok: #4cc488; --bad: #f07067; --line: #2c332f; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+    main { max-width: 860px; margin: 0 auto; display: grid; gap: 16px; }
+    h1 { margin: 0; font-size: 22px; }
+    h2 { margin: 0 0 8px; font-size: 16px; }
+    p { margin: 0; color: var(--muted); }
+    section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+    dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
+    dt { color: var(--muted); }
+    dd { margin: 0; font-variant-numeric: tabular-nums; }
+    .ok { color: var(--ok); font-weight: 600; }
+    .bad { color: var(--bad); font-weight: 600; }
+    button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    pre { margin: 0; padding: 12px; background: var(--bg); border-radius: 8px; overflow-x: auto; max-height: 360px; font-size: 13px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>AgriTrack host test</h1>
+    <p>Leave this page open for 10+ minutes, then redeploy once. Note what each box shows.</p>
+  </header>
+
+  <div class="grid">
+    <section>
+      <h2>A · Live connection (normal)</h2>
+      <dl>
+        <dt>Status</dt><dd id="a-status">connecting…</dd>
+        <dt>Transport</dt><dd id="a-transport">—</dd>
+        <dt>Copy (instance)</dt><dd id="a-instance">—</dd>
+        <dt>Connected for</dt><dd id="a-for">—</dd>
+        <dt>Ticks received</dt><dd id="a-ticks">0</dd>
+        <dt>Reconnects</dt><dd id="a-reconnects">0</dd>
+      </dl>
+    </section>
+    <section>
+      <h2>B · Live connection (WebSocket only)</h2>
+      <dl>
+        <dt>Status</dt><dd id="b-status">connecting…</dd>
+        <dt>Transport</dt><dd id="b-transport">—</dd>
+        <dt>Copy (instance)</dt><dd id="b-instance">—</dd>
+        <dt>Connected for</dt><dd id="b-for">—</dd>
+        <dt>Ticks received</dt><dd id="b-ticks">0</dd>
+        <dt>Reconnects</dt><dd id="b-reconnects">0</dd>
+      </dl>
+    </section>
+  </div>
+
+  <section>
+    <h2>Checks</h2>
+    <div class="buttons">
+      <button data-check="copies">How many copies? (20 calls)</button>
+      <button data-check="/outbound">Outgoing calls</button>
+      <button data-check="/db">Database</button>
+      <button data-check="/db?try_role=1">Database: try a limited login</button>
+      <button data-check="/jobs">Job runs per copy</button>
+    </div>
+    <pre id="result">Press a check.</pre>
+  </section>
+
+  <section>
+    <h2>Event log</h2>
+    <pre id="log"></pre>
+  </section>
+</main>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const time = () => new Date().toLocaleTimeString();
+  const logLine = (text) => { $('log').textContent = `${time()}  ${text}\n` + $('log').textContent; };
+
+  function watch(prefix, options) {
+    const socket = io(options);
+    const state = { since: null, ticks: 0, reconnects: 0 };
+    const set = (field, value) => { $(`${prefix}-${field}`).textContent = value; };
+
+    socket.on('connect', () => {
+      state.since = Date.now();
+      set('status', 'connected');
+      $(`${prefix}-status`).className = 'ok';
+      set('transport', socket.io.engine.transport.name);
+      logLine(`${prefix.toUpperCase()}: connected via ${socket.io.engine.transport.name}`);
+      socket.io.engine.on('upgrade', (t) => { set('transport', t.name); logLine(`${prefix.toUpperCase()}: upgraded to ${t.name}`); });
+    });
+    socket.on('disconnect', (reason) => {
+      state.since = null;
+      set('status', `disconnected (${reason})`);
+      $(`${prefix}-status`).className = 'bad';
+      logLine(`${prefix.toUpperCase()}: disconnected — ${reason}`);
+    });
+    socket.on('connect_error', (error) => {
+      set('status', `cannot connect (${error.message})`);
+      $(`${prefix}-status`).className = 'bad';
+      logLine(`${prefix.toUpperCase()}: connect error — ${error.message}`);
+    });
+    socket.io.on('reconnect', () => { state.reconnects += 1; set('reconnects', state.reconnects); });
+    socket.on('hello', (m) => { set('instance', m.instance); logLine(`${prefix.toUpperCase()}: hello from copy ${m.instance}`); });
+    socket.on('tick', (m) => { state.ticks += 1; set('ticks', `${state.ticks} (last from copy ${m.instance})`); });
+    socket.on('job', (m) => logLine(`${prefix.toUpperCase()}: job run #${m.n} on copy ${m.instance}`));
+    socket.on('bye', (m) => logLine(`${prefix.toUpperCase()}: copy ${m.instance} is shutting down (${m.signal})`));
+
+    setInterval(() => {
+      if (!state.since) return;
+      const s = Math.floor((Date.now() - state.since) / 1000);
+      set('for', `${Math.floor(s / 60)} min ${s % 60} s`);
+    }, 1000);
+  }
+
+  watch('a', {});                                      // socket.io's default: starts on HTTP, upgrades to WebSocket
+  watch('b', { transports: ['websocket'] });           // WebSocket only — fails if the host doesn't pass WebSockets
+
+  async function check(path) {
+    $('result').textContent = 'Working…';
+    try {
+      if (path === 'copies') {
+        const seen = {};
+        for (let i = 0; i < 20; i += 1) {
+          const info = await (await fetch(`/info?n=${i}`, { cache: 'no-store' })).json();
+          seen[info.instance] = (seen[info.instance] || 0) + 1;
+        }
+        const count = Object.keys(seen).length;
+        $('result').textContent = `${count === 1 ? 'ONE copy answered' : `${count} DIFFERENT copies answered`} 20 calls:\n${JSON.stringify(seen, null, 2)}`;
+        return;
+      }
+      const response = await fetch(path, { cache: 'no-store' });
+      $('result').textContent = `HTTP ${response.status}\n${JSON.stringify(await response.json(), null, 2)}`;
+    } catch (error) {
+      $('result').textContent = `Failed: ${error.message}`;
+    }
+  }
+  document.querySelectorAll('[data-check]').forEach((b) => b.addEventListener('click', () => check(b.dataset.check)));
+</script>
+</body>
+</html>
