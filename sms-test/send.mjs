@@ -4,8 +4,9 @@
  * Sends one of AgriTrack's real texts through a provider's API, then asks the provider for its delivery status
  * until the message reaches a final state (or 3 minutes pass). Results are appended to results.csv.
  *
- *   node send.mjs --provider smsethiopia --to 0911234567 --text 1
- *   node send.mjs --provider afromessage --to 0711234567 --text 3
+ *   node send.mjs --provider smsethiopia --to ethio --text 1       (TEST_ETHIO_NUMBER from .env)
+ *   node send.mjs --provider afromessage --to safaricom --text 3   (TEST_SAFARICOM_NUMBER from .env)
+ *   node send.mjs --provider smsethiopia --to 0911234567 --text 1  (or any number given directly)
  *   node send.mjs --texts                      (show the four texts and their size)
  *
  * Keys come from sms-test/.env (see .env.example) — never committed, never printed. results.csv holds phone
@@ -157,7 +158,12 @@ async function main() {
   const provider = PROVIDERS[providerName];
   if (!provider) throw new Error('Use --provider smsethiopia or --provider afromessage');
   if (!provider.key()) throw new Error(`No key for ${providerName} — add it to sms-test/.env (see .env.example)`);
-  const msisdn = normalize(arg('to'));
+  // "--to ethio" / "--to safaricom" read the test numbers from .env, so they never appear in commands or logs.
+  const to = String(arg('to') || '');
+  const namedNumbers = { ethio: 'TEST_ETHIO_NUMBER', safaricom: 'TEST_SAFARICOM_NUMBER' };
+  const envName = namedNumbers[to.toLowerCase()];
+  if (envName && !env[envName]) throw new Error(`Add ${envName} to sms-test/.env first`);
+  const msisdn = normalize(envName ? env[envName] : to);
   const textNumber = arg('text') || '1';
   if (!TEXTS[textNumber]) throw new Error('Use --text 1, 2, 3 or 4');
   const text = TEXTS[textNumber](randomCode());

@@ -45,10 +45,12 @@ The server also prints a log line for every connection, job run and shutdown —
 
 **Send** (from `sms-test/`)
 ```
-node send.mjs --texts                                         # the four texts and their size
-node send.mjs --provider smsethiopia --to 09XXXXXXXX --text 1  # Ethio Telecom number
-node send.mjs --provider afromessage --to 07XXXXXXXX --text 1  # Safaricom number
+node send.mjs --texts                                       # the four texts and their size
+node send.mjs --provider smsethiopia --to ethio --text 1     # TEST_ETHIO_NUMBER from .env
+node send.mjs --provider afromessage --to safaricom --text 1 # TEST_SAFARICOM_NUMBER from .env
 ```
+Put your test numbers in `.env` as `TEST_ETHIO_NUMBER` / `TEST_SAFARICOM_NUMBER` (see `.env.example`) — then they
+never appear in commands or logs. Both providers' free accounts only send to numbers verified in their dashboards.
 Texts: **1** English code · **2** Amharic code · **3** alert with "•" (2 SMS parts) · **4** the same alert with
 "*" (1 part).
 
